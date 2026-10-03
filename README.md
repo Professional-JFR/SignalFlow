@@ -171,12 +171,16 @@ curl -s -X POST http://localhost:8080/api/v1/logs \
 
 ```json
 {
-  "errors": {
+  "code": "VALIDATION_ERROR",
+  "message": "Request validation failed. Fix the listed fields and retry.",
+  "details": {
     "timestamp": "timestamp is required",
     "env":       "env is required",
     "severity":  "severity is required",
     "message":   "message is required"
-  }
+  },
+  "correlationId": "…",
+  "timestamp": "…"
 }
 ```
 
@@ -259,12 +263,9 @@ See [`db/migrations/V1__initial_schema.sql`](db/migrations/V1__initial_schema.sq
 - Retention jobs: raw logs 7 days, aggregates 30 days
 - Structured JSON logging + Prometheus metrics via Micrometer
 - `POST /api/v1/logs/batch` for efficient bulk ingestion
-<<<<<<< HEAD
-=======
 ## Documentation
 
 - [Deployment Runbook](docs/deployment.md)
 - [Resume Project Notes](docs/resume.md)
 - [Benchmark Guide](bench/README.md)
 
->>>>>>> 6d1cf07 (Add documentation index links to README)

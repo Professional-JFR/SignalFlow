@@ -1,0 +1,5 @@
+/home/runner/work/SignalFlow/SignalFlow/ingest-java/src/test/java/dev/signalflow/ingest/LogIngestionIntegrationTest.java
+/home/runner/work/SignalFlow/SignalFlow/ingest-java/src/test/java/dev/signalflow/ingest/LoggingPatternTest.java
+/home/runner/work/SignalFlow/SignalFlow/ingest-java/src/test/java/dev/signalflow/ingest/service/FingerprintServiceTest.java
+/home/runner/work/SignalFlow/SignalFlow/ingest-java/src/test/java/dev/signalflow/ingest/service/LogIngestionServiceTest.java
+/home/runner/work/SignalFlow/SignalFlow/ingest-java/src/test/java/dev/signalflow/ingest/service/NormalizationServiceTest.java

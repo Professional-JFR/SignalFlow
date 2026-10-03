@@ -1,0 +1,5 @@
+dev/signalflow/ingest/service/FingerprintServiceTest.class
+dev/signalflow/ingest/service/NormalizationServiceTest.class
+dev/signalflow/ingest/LoggingPatternTest.class
+dev/signalflow/ingest/LogIngestionIntegrationTest.class
+dev/signalflow/ingest/service/LogIngestionServiceTest.class

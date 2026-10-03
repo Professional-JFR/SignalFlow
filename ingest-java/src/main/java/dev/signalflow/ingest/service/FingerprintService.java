@@ -1,5 +1,7 @@
 package dev.signalflow.ingest.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -18,6 +20,8 @@ import java.security.NoSuchAlgorithmException;
 @Service
 public class FingerprintService {
 
+    private static final Logger log = LoggerFactory.getLogger(FingerprintService.class);
+
     public String fingerprint(String service, String normalizedMessage, String severity) {
         String input = service + "|" + normalizedMessage + "|" + severity.toUpperCase();
         try {
@@ -27,6 +31,7 @@ public class FingerprintService {
             for (byte b : hash) {
                 hex.append(String.format("%02x", b));
             }
+            log.debug("Generated fingerprint={} service={} severity={}", hex, service, severity);
             return hex.toString();
         } catch (NoSuchAlgorithmException e) {
             // SHA-256 is mandated by the Java SE specification — this will never happen.

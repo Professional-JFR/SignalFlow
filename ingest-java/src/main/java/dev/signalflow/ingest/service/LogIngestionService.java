@@ -3,12 +3,18 @@ package dev.signalflow.ingest.service;
 import dev.signalflow.ingest.dto.IngestResponse;
 import dev.signalflow.ingest.dto.LogRequest;
 import dev.signalflow.ingest.dto.TopGroupsResponse;
+import dev.signalflow.ingest.exception.DatabaseException;
+import dev.signalflow.ingest.exception.ValidationException;
 import dev.signalflow.ingest.repository.LogEventRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -31,9 +37,15 @@ import java.util.List;
 @Service
 public class LogIngestionService {
 
+    private static final Logger log = LoggerFactory.getLogger(LogIngestionService.class);
+
+    static final int MAX_ATTEMPTS = 3;
+    static final long INITIAL_BACKOFF_MS = 50;
+
     private final NormalizationService normalization;
     private final FingerprintService fingerprinting;
     private final LogEventRepository repository;
+    private final TransactionTemplate transactionTemplate;
 
     // --- ingestion metrics ---
     private final Counter ingestEvents;
@@ -51,10 +63,12 @@ public class LogIngestionService {
             NormalizationService normalization,
             FingerprintService fingerprinting,
             LogEventRepository repository,
+            TransactionTemplate transactionTemplate,
             MeterRegistry meterRegistry) {
         this.normalization = normalization;
         this.fingerprinting = fingerprinting;
         this.repository = repository;
+        this.transactionTemplate = transactionTemplate;
         this.meterRegistry = meterRegistry;
 
         this.ingestEvents = meterRegistry.counter("signalflow.ingest.events");
@@ -66,32 +80,90 @@ public class LogIngestionService {
     }
 
     /**
-     * Ingests a single validated log entry.
+     * Ingests a single log entry.
      * The raw event and the minute-bucket aggregate are written in one transaction.
+     * Transient database failures are retried with exponential backoff; each attempt
+     * runs in its own transaction.
      */
-    @Transactional
     public IngestResponse ingest(LogRequest request) {
+        validate(request);
         return ingestLatency.record(() -> {
             try {
                 String normalized = normalization.normalize(request.message());
                 String fp = fingerprinting.fingerprint(request.service(), normalized, request.severity());
+                log.debug("Computed fingerprint={} service={}", fp, request.service());
 
-                dedupTotal.increment();
-                boolean isKnown = repository.fingerprintExists(fp);
-                if (isKnown) {
-                    dedupHits.increment();
-                }
-
-                repository.saveLogEvent(request, normalized, fp);
-                repository.upsertMinuteAggregate(request, normalized, fp);
+                persistWithRetry(request, normalized, fp);
 
                 ingestEvents.increment();
+                log.info("Event ingested fingerprint={} service={} severity={}",
+                        fp, request.service(), request.severity());
                 return new IngestResponse(fp, normalized);
             } catch (RuntimeException e) {
                 ingestErrors.increment();
                 throw e;
             }
         });
+    }
+
+    private void validate(LogRequest request) {
+        if (request == null) {
+            throw new ValidationException("Request body is required.");
+        }
+        if (request.timestamp() == null) {
+            throw new ValidationException("timestamp is required (ISO-8601, e.g. 2024-01-01T00:00:00Z).");
+        }
+        requireText(request.service(), "service");
+        requireText(request.env(), "env");
+        requireText(request.severity(), "severity");
+        requireText(request.message(), "message");
+    }
+
+    private void requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            log.warn("Validation failed: {} is missing", field);
+            throw new ValidationException(field + " is required and must not be blank.");
+        }
+    }
+
+    private void persistWithRetry(LogRequest request, String normalized, String fp) {
+        long backoff = INITIAL_BACKOFF_MS;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                transactionTemplate.executeWithoutResult(status -> persist(request, normalized, fp));
+                return;
+            } catch (TransientDataAccessException e) {
+                if (attempt >= MAX_ATTEMPTS) {
+                    throw new DatabaseException("Database unavailable after " + attempt + " attempts", e);
+                }
+                log.warn("Transient database failure attempt={}/{} backoffMs={}",
+                        attempt, MAX_ATTEMPTS, backoff, e);
+                sleep(backoff);
+                backoff *= 2;
+            } catch (DataAccessException e) {
+                throw new DatabaseException("Database operation failed", e);
+            }
+        }
+    }
+
+    private void persist(LogRequest request, String normalized, String fp) {
+        dedupTotal.increment();
+        boolean isKnown = repository.fingerprintExists(fp);
+        if (isKnown) {
+            dedupHits.increment();
+            log.debug("Duplicate fingerprint={}", fp);
+        }
+        repository.saveLogEvent(request, normalized, fp);
+        repository.upsertMinuteAggregate(request, normalized, fp);
+    }
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new DatabaseException("Interrupted while retrying database operation", ie);
+        }
     }
 
     /**
