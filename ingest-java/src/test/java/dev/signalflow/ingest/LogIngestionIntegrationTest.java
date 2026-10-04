@@ -82,7 +82,7 @@ class LogIngestionIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors.message").isNotEmpty());
+                .andExpect(jsonPath("$.details.message").isNotEmpty());
     }
 
     @Test
@@ -100,14 +100,14 @@ class LogIngestionIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors.timestamp").isNotEmpty());
+                .andExpect(jsonPath("$.details.timestamp").isNotEmpty());
     }
 
     @Test
     void unsupportedWindowReturns400() throws Exception {
         mockMvc.perform(get("/api/v1/groups/top?window=bad"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").isNotEmpty());
+                .andExpect(jsonPath("$.message").isNotEmpty());
     }
 
     // --- helpers ---

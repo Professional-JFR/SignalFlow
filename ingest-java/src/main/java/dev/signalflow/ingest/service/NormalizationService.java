@@ -1,5 +1,8 @@
 package dev.signalflow.ingest.service;
 
+import dev.signalflow.ingest.exception.NormalizationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.regex.Pattern;
@@ -16,6 +19,8 @@ import java.util.regex.Pattern;
 @Service
 public class NormalizationService {
 
+    private static final Logger log = LoggerFactory.getLogger(NormalizationService.class);
+
     // Standard 8-4-4-4-12 UUID form
     private static final Pattern UUID_PATTERN = Pattern.compile(
             "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
@@ -28,12 +33,20 @@ public class NormalizationService {
 
     public String normalize(String message) {
         if (message == null) {
+            log.debug("Normalizing null message; returning empty string");
             return "";
         }
-        String result = message.toLowerCase();
-        result = UUID_PATTERN.matcher(result).replaceAll("<UUID>");
-        result = NUMBER_PATTERN.matcher(result).replaceAll("<NUM>");
-        result = WHITESPACE_PATTERN.matcher(result).replaceAll(" ");
-        return result.trim();
+        try {
+            String result = message.toLowerCase();
+            result = UUID_PATTERN.matcher(result).replaceAll("<UUID>");
+            result = NUMBER_PATTERN.matcher(result).replaceAll("<NUM>");
+            result = WHITESPACE_PATTERN.matcher(result).replaceAll(" ");
+            result = result.trim();
+            log.debug("Normalized message originalLength={} normalizedLength={}",
+                    message.length(), result.length());
+            return result;
+        } catch (RuntimeException e) {
+            throw new NormalizationException("Failed to normalize log message", e);
+        }
     }
 }
